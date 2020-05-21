@@ -232,6 +232,7 @@ public class MoreDecimalWindow extends JFrame
 			if (security != null) {
 				setNewDecimals(security.getDecimalPlaces());
 				this.btnStage.setEnabled(false);
+				this.btnCommit.setEnabled(false);
 			}
 		}
 
