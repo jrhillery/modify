@@ -15,7 +15,6 @@ import java.awt.event.FocusListener;
 import java.awt.event.WindowEvent;
 import java.text.NumberFormat;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.ResourceBundle;
 
 import javax.swing.AbstractListModel;
@@ -37,6 +36,7 @@ import javax.swing.border.EmptyBorder;
 
 import com.infinitekind.moneydance.model.CurrencyTable;
 import com.infinitekind.moneydance.model.CurrencyType;
+import com.infinitekind.moneydance.model.CurrencyUtil;
 import com.leastlogic.swing.util.HTMLPane;
 
 /**
@@ -60,12 +60,7 @@ public class MoreDecimalWindow extends JFrame
 				}
 			} // end for
 
-			this.securities.sort(new Comparator<CurrencyType>() {
-				public int compare(CurrencyType a, CurrencyType b) {
-
-					return a.compareToCurrency(b);
-				} // end compare(CurrencyType, CurrencyType)
-			});
+			this.securities.sort(CurrencyUtil.CURRENCY_TYPENAME_COMPARATOR);
 
 		} // end (CurrencyTable) constructor
 

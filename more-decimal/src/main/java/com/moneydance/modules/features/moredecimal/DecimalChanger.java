@@ -4,12 +4,12 @@
 package com.moneydance.modules.features.moredecimal;
 
 import static com.infinitekind.moneydance.model.Account.AccountType.INVESTMENT;
+import static com.moneydance.modules.features.moredecimal.MoreDecimalWindow.baseMessageBundleName;
 import static java.time.format.FormatStyle.MEDIUM;
 
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -73,20 +73,15 @@ public class DecimalChanger {
 			writeFormatted("MDC02", securityName, newDecimalPlaces);
 		} else {
 			boolean allAccountsGood = true;
-			Iterator<Account> acntIterator = AccountUtil
-					.getAccountIterator(this.book.getRootAccount());
+			List<Account> invAccounts = MdUtil.getAccounts(this.book, INVESTMENT);
 
-			while (acntIterator.hasNext()) {
-				Account investAcnt = acntIterator.next();
+			for (Account investAcnt : invAccounts) {
+				Account securityAcnt = MdUtil.getSubAccountByName(investAcnt, securityName);
 
-				if (investAcnt.getAccountType() == INVESTMENT) {
-					Account securityAcnt = MdUtil.getSubAccountByName(investAcnt, securityName);
-
-					if (securityAcnt != null) {
-						allAccountsGood &= saveAccntToChanges(securityAcnt, investAcnt);
-					}
+				if (securityAcnt != null) {
+					allAccountsGood &= saveAccntToChanges(securityAcnt, investAcnt);
 				}
-			} // end while
+			} // end for
 
 			if (!allAccountsGood) {
 				forgetChanges();
@@ -101,7 +96,7 @@ public class DecimalChanger {
 	 * @return true when all transactions can change decimals as requested
 	 */
 	private boolean saveAccntToChanges(Account securityAccount, Account investAccount) {
-		boolean accountGood;
+		boolean accountGood = false;
 		int txnDate = 0;
 		try {
 			int txnCount = 0;
@@ -110,7 +105,7 @@ public class DecimalChanger {
 			for (AbstractTxn txn : txnLst) {
 				if (txn instanceof SplitTxn) {
 					txnDate = txn.getDateInt();
-					saveTxnToChanges((SplitTxn) txn, securityAccount, txnDate);
+					saveTxnToChange((SplitTxn) txn, securityAccount, txnDate);
 					++txnCount;
 				} else {
 					// WARNING: Found unexpected transaction in %s: %s.
@@ -127,7 +122,6 @@ public class DecimalChanger {
 			String txnDateStr = MdUtil.convDateIntToLocal(txnDate).format(dateFmt);
 			writeFormatted("MDC05", e.getMessage(), this.newDecimalPlaces,
 				securityAccount.getFullAccountName(), txnDateStr);
-			accountGood = false;
 		}
 
 		return accountGood;
@@ -138,11 +132,12 @@ public class DecimalChanger {
 	 * @param securityAccount
 	 * @param txnDate
 	 */
-	private void saveTxnToChanges(SplitTxn sTxn, Account securityAccount, int txnDate)
+	private void saveTxnToChange(SplitTxn sTxn, Account securityAccount, int txnDate)
 			throws ArithmeticException {
 		// verify shares fits with new decimals
 		BigDecimal shares = BigDecimal.valueOf(sTxn.getValue());
-		shares.movePointRight(this.rightMovePlaces).longValueExact();
+		shares = shares.movePointRight(this.rightMovePlaces);
+		long newShares = shares.longValueExact();
 
 		// verify balance fits with new decimals
 		BigDecimal balance = BigDecimal.valueOf(
@@ -150,9 +145,9 @@ public class DecimalChanger {
 		balance.movePointRight(this.rightMovePlaces).longValueExact();
 
 		// good to go; save for commit
-		this.changeTxns.add(new TransactionHandler(sTxn));
+		this.changeTxns.add(new TransactionHandler(sTxn, newShares));
 
-	} // end saveTxnToChanges(SplitTxn, Account, int)
+	} // end saveTxnToChange(SplitTxn, Account, int)
 
 	/**
 	 * Commit any changes to Moneydance.
@@ -182,7 +177,7 @@ public class DecimalChanger {
 	 * @param num
 	 * @return the letter 's' unless num is 1
 	 */
-	private String sUnless1(int num) {
+	private static String sUnless1(int num) {
 
 		return num == 1 ? "" : "s";
 	} // end sUnless1(int)
@@ -191,30 +186,29 @@ public class DecimalChanger {
 	 * Class to hold on to, and perform, a transaction change (security and share
 	 * balance).
 	 */
-	private class TransactionHandler {
+	private static class TransactionHandler {
 		private SplitTxn txn;
+		private long newShares;
 
 		/**
 		 * Sole constructor.
 		 *
 		 * @param txn
+		 * @param newShares
 		 */
-		public TransactionHandler(SplitTxn txn) {
+		public TransactionHandler(SplitTxn txn, long newShares) {
 			this.txn = txn;
+			this.newShares = newShares;
 
-		} // end (SplitTxn) constructor
+		} // end (SplitTxn, long) constructor
 
 		/**
 		 * Change the share balance.
 		 */
 		public void applyUpdate() {
-			BigDecimal shares = BigDecimal.valueOf(this.txn.getValue());
-			shares = shares.movePointRight(DecimalChanger.this.rightMovePlaces);
-			long newShares = shares.longValueExact();
-
 			ParentTxn pTxn = this.txn.getParentTxn();
 			pTxn.setEditingMode();
-			this.txn.setAmount(newShares, this.txn.getAmount());
+			this.txn.setAmount(this.newShares, this.txn.getAmount());
 			pTxn.syncItem();
 
 		} // end applyUpdate()
@@ -254,8 +248,7 @@ public class DecimalChanger {
 	 */
 	private ResourceBundle getMsgBundle() {
 		if (this.msgBundle == null) {
-			this.msgBundle = MdUtil.getMsgBundle(MoreDecimalWindow.baseMessageBundleName,
-				this.locale);
+			this.msgBundle = MdUtil.getMsgBundle(baseMessageBundleName, this.locale);
 		}
 
 		return this.msgBundle;
